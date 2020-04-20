@@ -317,7 +317,7 @@ classdef Experiment < handle
             end
         end
         
-        function [axs,f] = plotMetricConvergence(obj,metricName,params)
+        function plotMetricConvergence(obj,metricName,params)
             % Plot the evolution of the coefficient of variation for each
             % treatment as the number of trials increase
             resultsDistStruct = computeResultsDistributionMetricMultiple(obj,{metricName});
@@ -333,19 +333,23 @@ classdef Experiment < handle
             else
                 treatmentLabels = arrayfun(@(i) num2str(i),treatmentInds,'UniformOutput',false);
             end
+            if (isfield(params,'metricLabel'))
+                metricLabel = params.metricLabel;
+            else
+                metricLabel = metricName;
+            end
             
             cov = nan(size(results,1)-1,length(treatmentInds));
             for i = 2:size(results,1)
                 cov(i-1,:) = std(results(1:i,treatmentInds))./mean(results(1:i,treatmentInds));
             end
-            f = figure;
             plot(2:size(results,1),cov);
-            axs = gca;
             if (length(treatmentLabels) > 1)
                 legend(treatmentLabels{:});
             end
             ylabel('CoV');
             xlabel('Trials');
+            title(sprintf('Metric variation: %s',metricLabel));
         end
         
         function [axs,f] = plotResultsDistributionTreatment(obj,metricName,treatmentLabels)
@@ -413,7 +417,7 @@ classdef Experiment < handle
             legend(treatmentLabels);
         end
         
-        function [ax,f] = plotResultsDistributionMetrics(obj,params)
+        function plotResultsDistributionMetrics(obj,params)
         %function [ax,f] = plotRelativeResultsDistributionMetrics(obj,metricNames,baseInd,treatmentLabels,metricLabels)
             % Makes a stacked bar chart. Each group of bars corresponds to
             % a metric. Each bar in the group is the percent change in the
@@ -441,13 +445,22 @@ classdef Experiment < handle
             % N metric names
             N = length(metricNames);
             
-            % M treatments, assumes the same for all trials and metrics
-            M = size(resultsDistStruct.(metricNames{1}),2);
             % Infer metric labels if not explicitly defined
             if (~isfield(params,'metricLabels') || length(params.metricLabels) ~= N)
                 metricLabels = metricNames;
             else
                 metricLabels = params.metricLabels;
+            end
+            
+            
+            % Infer treatments, assumes the same for all trials and metrics
+            % M treatments
+            if (isfield(params,'treatmentInd'))
+                tInd = params.treatmentInd;
+                M = length(tInd);
+            else
+                M = size(resultsDistStruct.(metricNames{1}),2);
+                tInd = 1:M;
             end
             
             if (isfield(params,'treatmentLabels') && length(params.treatmentLabels) == M)
@@ -462,8 +475,6 @@ classdef Experiment < handle
             if (treatmentsNumeric)
                 % Treatments have a numeric interpretation. Sort them
                 [treatmentLabels, tInd] = sort(treatmentLabels);
-            else
-                tInd = 1:M;
             end
             
             % Set normalization, default 'absolute'
@@ -474,30 +485,28 @@ classdef Experiment < handle
             end
             
             data = cell(1,N);
-            switch normalization
+            switch lower(normalization)
                 case 'absolute'
                     for i = 1:N
                         t = resultsDistStruct.(metricNames{i});
                         data{i} = t(:,tInd);
                     end
                     ylabelText = 'Metric value';
-                case 'percentChangeByTrial'
+                case 'percentchangebytrial'
                     if (isfield(params,'baseIndex'))
                         baseInd = params.baseIndex;
                     else
                         baseInd = 1;
                     end
-                    % Indices of treatments that are not the reference
-                    remInd = 1:M;
                     
-                    baseIndSorted = tInd == baseInd;
+                    baseInd2 = tInd == baseInd;
                     
                     % Set the y label to indicate percent change
-                    ylabelText = sprintf('%% change relative to treatment: %s',treatmentLabels{baseInd});
+                    ylabelText = sprintf('%% change relative to treatment: %s',treatmentLabels{baseInd2});
                     
                     % Remove the baseInd
-                    tInd(baseIndSorted) = [];
-                    treatmentLabels(baseIndSorted) = [];
+                    tInd(baseInd2) = [];
+                    treatmentLabels(baseInd2) = [];
                     % Function to compute relative change of each treatment to the
                     % reference.
                     relativeChange = @(x) (x-repmat(x(:,baseInd),1,size(x,2)))./abs(repmat(x(:,baseInd)+1e-10,1,size(x,2)))*100;
@@ -511,16 +520,21 @@ classdef Experiment < handle
             
             if (treatmentsNumeric)
                 % Make a line graph of the data
-                [f, ax] = plotMetricLine(data,treatmentLabels,metricLabels);
+                plotMetricLine(data,treatmentLabels,metricLabels);
             else
                 % Treatments are labeled categorical
-                [f, ax] = plotGroupedBar(data,metricLabels,treatmentLabels);
+                if (isfield(params,'barOpts'))
+                    barOpts = params.barOpts;
+                else
+                    barOpts = struct;
+                end
+                plotGroupedBar(data,metricLabels,treatmentLabels,barOpts);
             end
             
             
-            title(ax,'Metrics');
-            ylabel(ax,ylabelText);
-            xlabel(ax,'Treatment');
+            title(gca,'Metrics');
+            ylabel(gca,ylabelText);
+            xlabel(gca,'Treatment');
         end
         
         function y = get.CompletedTrials(self)
